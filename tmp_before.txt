@@ -1,4 +1,4 @@
-﻿<script lang="ts"> 
+﻿<script lang="ts">
   import Card from '$lib/components/ui/card.svelte'
   import Button from '$lib/components/ui/button.svelte'
   import Badge from '$lib/components/ui/badge.svelte'
@@ -115,10 +115,6 @@
 
     await checkGethStatus()
     await updateNetworkStats()
-    // Seed the seen-hash set with anything already present
-    try {
-      seenHashes = new Set(($miningState.recentBlocks ?? []).map((b: any) => b.hash))
-    } catch {}
     
     // If mining is already active from before, restore session and update stats
     if ($miningState.isMining) {
@@ -143,10 +139,9 @@
       if (isTauri) {
         await updateCpuTemperature()
       }
-    
     }, 1000) as unknown as number
   })
-
+  
   async function checkGethStatus() {
     try {
       isGethRunning = await invoke('is_geth_running') as boolean
@@ -160,15 +155,16 @@
             sessionStartTime = Date.now()
             startUptimeTimer()
           }
-          // If we already think we're mining, just restart the uptime timer
         } else {
+          // If we already think we're mining, just restart the uptime timer
           startUptimeTimer()
         }
       }
     } catch (e) {
       console.error('Failed to check geth status:', e)
-    } 
+    }
   }
+  
   async function updateMiningStats() {
     try {
       const [rate, block] = await Promise.all([
@@ -191,6 +187,8 @@
             $miningState.hashRate = formatHashRate(hashRateFromLogs)
             if (blocksFound > $miningState.blocksFound) {
               const newBlocks = blocksFound - $miningState.blocksFound;
+              const rewardPerBlock = 5.0;
+              $miningState.totalRewards += newBlocks * rewardPerBlock;
               $miningState.blocksFound = blocksFound;
               // Visualization handled by backend-driven fetch
             }
@@ -394,7 +392,19 @@
     }
   }
   
-  // Simulation removed; recent blocks come from backend
+  function findBlock() {
+    $miningState.blocksFound++
+    const reward = 5 + Math.random() * 2
+    
+    $miningState.recentBlocks = [{
+      id: `block-${Date.now()}`,
+      hash: `0x${Math.random().toString(16).substring(2, 10)}...${Math.random().toString(16).substring(2, 6)}`,
+      reward: reward,
+      timestamp: new Date(),
+      difficulty: currentDifficulty,
+      nonce: Math.floor(Math.random() * 1000000)
+    }, ...($miningState.recentBlocks ?? []).slice(0, 4)]
+  }
 
   // Keep a set of hashes we've already shown to avoid duplicates
   let seenHashes = new Set<string>();
@@ -428,7 +438,7 @@
         address: $etcAccount.address,
         lookback,
         limit
-      }) as Array<{ hash: string, nonce?: string, difficulty?: string, timestamp: number, number: number, reward?: number }>;
+      }) as Array<{ hash: string, nonce?: string, difficulty?: string, timestamp: number, number: number }>;
       for (const b of blocks) {
         if (seenHashes.has(b.hash)) continue;
         seenHashes.add(b.hash);
@@ -438,15 +448,9 @@
           difficulty: b.difficulty ? parseInt(b.difficulty, 16) : undefined,
           timestamp: new Date((b.timestamp || 0) * 1000),
           number: b.number,
-          reward: typeof b.reward === 'number' ? b.reward : undefined
         });
       }
-      // Hard de-duplication by hash as a safety net
-      const uniq = new Map<string, any>();
-      for (const it of ($miningState.recentBlocks ?? [])) {
-        if (!uniq.has(it.hash)) uniq.set(it.hash, it);
-      }
-  $miningState.recentBlocks = Array.from(uniq.values()).slice(0, 50);
+      $miningState.blocksFound = ($miningState.recentBlocks ?? []).length;
     } catch (e) {
       console.error('Failed to append recent blocks:', e);
     }
@@ -518,7 +522,6 @@
     }
   }
   
-  let pools: { value: string; label: string }[] = []
   // Mock pool options
   $: pools = [
     { value: 'solo', label: $t('mining.pools.solo') },
@@ -542,6 +545,7 @@
   })
 
 </script>
+
 <div class="space-y-6">
   <div>
     <h1 class="text-3xl font-bold">{$t('mining.title')}</h1>

@@ -13,7 +13,8 @@ use ethereum::{
     create_new_account, get_account_from_private_key, get_balance, get_peer_count,
     start_mining, stop_mining, get_mining_status, get_hashrate, get_block_number,
     get_network_difficulty, get_network_hashrate, get_mining_logs, get_mining_performance,
-    get_mined_blocks_count, EthAccount, GethProcess
+    get_mined_blocks_count, get_recent_mined_blocks as eth_get_recent_mined_blocks,
+    EthAccount, GethProcess, MinedBlock
 };
 use keystore::Keystore;
 use geth_downloader::GethDownloader;
@@ -266,6 +267,11 @@ async fn get_miner_performance(data_dir: String) -> Result<(u64, f64), String> {
 #[tauri::command]
 async fn get_blocks_mined(address: String) -> Result<u64, String> {
     get_mined_blocks_count(&address).await
+}
+
+#[tauri::command]
+async fn get_recent_mined_blocks(address: String, lookback: u64, limit: usize) -> Result<Vec<MinedBlock>, String> {
+    eth_get_recent_mined_blocks(&address, lookback, limit).await
 }
 
 #[tauri::command]
@@ -530,6 +536,7 @@ fn main() {
             get_miner_logs,
             get_miner_performance,
             get_blocks_mined,
+            get_recent_mined_blocks,
             get_cpu_temperature,
             start_dht_node,
             stop_dht_node,
