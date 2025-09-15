@@ -658,7 +658,7 @@
       <div class="flex items-center justify-between">
         <div>
           <p class="text-sm text-muted-foreground">{$t('mining.temperature')}</p>
-          <p class="text-2xl font-bold">{temperature.toFixed(1)}Â°C</p>
+          <p class="text-2xl font-bold">{temperature.toFixed(1)}&deg;C</p>
           <div class="mt-1">
             <Progress 
               value={temperature} 
@@ -913,7 +913,7 @@
               <div>
                 <p class="text-sm font-medium">{$t('mining.blockFound')}</p>
                 <p class="text-xs text-muted-foreground">
-                  {$t('mining.hash')}: {block.hash} â€¢ {$t('mining.nonce')}: {block.nonce}
+                  {$t('mining.hash')}: {block.hash} &bull; t('mining.nonce')}: {block.nonce}
                 </p>
               </div>
             </div>
@@ -1089,4 +1089,3 @@
       </Card>
     </div>
   {/if}
-</div>
