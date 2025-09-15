@@ -913,7 +913,7 @@
               <div>
                 <p class="text-sm font-medium">{$t('mining.blockFound')}</p>
                 <p class="text-xs text-muted-foreground">
-                  {$t('mining.hash')}: {block.hash} &bull; t('mining.nonce')}: {block.nonce}
+                  {$t('mining.hash')}: {block.hash} &bull; Nonce: {block.nonce}
                 </p>
               </div>
             </div>
