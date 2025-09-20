@@ -83,6 +83,17 @@ export interface ChatMessage {
   read: boolean;
 }
 
+export interface Transaction {
+  id: number;
+  type: 'sent' | 'received';
+  amount: number;
+  to?: string;
+  from?: string;
+  date: Date;
+  description: string;
+  status: 'pending' | 'completed' | 'failed';
+}
+
 export interface NetworkStats {
   totalPeers: number;
   onlinePeers: number;
@@ -249,6 +260,15 @@ export const userLocation = writable<string>("US-East");
 export const etcAccount = writable<ETCAccount | null>(null);
 export const blacklist = writable<BlacklistEntry[]>(blacklistedPeers);
 
+const initialTransactions: Transaction[] = [
+  { id: 1, type: 'received', amount: 50.5, from: '0x8765...4321', date: new Date('2024-03-15'), description: 'File purchase', status: 'completed' },
+  { id: 2, type: 'sent', amount: 10.25, to: '0x1234...5678', date: new Date('2024-03-14'), description: 'Proxy service', status: 'completed' },
+  { id: 3, type: 'received', amount: 100, from: '0xabcd...ef12', date: new Date('2024-03-13'), description: 'Upload reward', status: 'completed' },
+  { id: 4, type: 'sent', amount: 5.5, to: '0x9876...5432', date: new Date('2024-03-12'), description: 'File download', status: 'completed' },
+];
+
+export const transactions = writable<Transaction[]>(initialTransactions);
+
 interface RecentBlock {
   id: string;
   hash: string;
@@ -273,6 +293,9 @@ export interface MiningState {
   activeThreads: number;
   minerIntensity: number;
   selectedPool: string;
+  sessionRewards: number;
+  sessionStartBalance?: number;
+  lastKnownBalance?: number;
   sessionStartTime?: number; // Track mining session start time for persistence
   recentBlocks?: RecentBlock[]; // Store recent blocks found
   miningHistory?: MiningHistoryPoint[]; // Store hash rate history for charts
@@ -286,6 +309,9 @@ export const miningState = writable<MiningState>({
   activeThreads: 1,
   minerIntensity: 50,
   selectedPool: "solo",
+  sessionRewards: 0,
+  sessionStartBalance: undefined,
+  lastKnownBalance: undefined,
   sessionStartTime: undefined,
   recentBlocks: [],
   miningHistory: [],

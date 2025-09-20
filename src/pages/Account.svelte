@@ -5,8 +5,9 @@
   import Label from '$lib/components/ui/label.svelte'
   import { Wallet, Copy, ArrowUpRight, ArrowDownLeft, History, Coins, Plus, Import, BadgeX, KeyRound, FileText } from 'lucide-svelte'
   import DropDown from "$lib/components/ui/dropDown.svelte";
-  import { wallet, etcAccount, blacklist } from '$lib/stores'
-  import { writable, derived } from 'svelte/store'
+  import { wallet, etcAccount, blacklist, transactions } from '$lib/stores'
+  import { derived } from 'svelte/store'
+  import type { Transaction } from '$lib/stores'
   import { invoke } from '@tauri-apps/api/core'
   import QRCode from 'qrcode'
   import { Html5QrcodeScanner as Html5QrcodeScannerClass } from 'html5-qrcode'
@@ -29,17 +30,6 @@
 
   // Check if running in Tauri environment
   const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
-
-  interface Transaction {
-    id: number;
-    type: 'sent' | 'received';
-    amount: number;
-    to?: string;
-    from?: string;
-    date: Date;
-    description: string;
-    status: 'pending' | 'completed';
-  }
 
   interface BlacklistEntry {
     chiral_address: string;
@@ -78,20 +68,13 @@
   let hdAccounts: HDAccountItem[] = [];
 
   // Transaction receipt modal state
-  let selectedTransaction: any = null;
+  let selectedTransaction: Transaction | null = null;
   let showTransactionReceipt = false;
   
 
   let Html5QrcodeScanner: InstanceType<typeof Html5QrcodeScannerClass> | null = null;
   
-  // Demo transactions - in real app these will be fetched from blockchain
-  const transactions = writable<Transaction[]>([
-    { id: 1, type: 'received', amount: 50.5, from: '0x8765...4321', to: undefined, date: new Date('2024-03-15'), description: 'File purchase', status: 'completed' },
-    { id: 2, type: 'sent', amount: 10.25, to: '0x1234...5678', from: undefined, date: new Date('2024-03-14'), description: 'Proxy service', status: 'completed' },
-    { id: 3, type: 'received', amount: 100, from: '0xabcd...ef12', to: undefined, date: new Date('2024-03-13'), description: 'Upload reward', status: 'completed' },
-    { id: 4, type: 'sent', amount: 5.5, to: '0x9876...5432', from: undefined, date: new Date('2024-03-12'), description: 'File download', status: 'completed' },
-  ]);
-
+  // Transactions are provided by the shared store and will be replaced with real data when the backend is connected
   // Enhanced validation states
   let validationWarning = '';
   let isAmountValid = true;
@@ -427,7 +410,7 @@
     return new Intl.DateTimeFormat(loc, { month: 'short', day: 'numeric', year: 'numeric' }).format(date)
   }
 
-  function handleTransactionClick(tx: any) {
+  function handleTransactionClick(tx: Transaction) {
     selectedTransaction = tx;
     showTransactionReceipt = true;
   }

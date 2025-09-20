@@ -10,7 +10,7 @@
   import { Cpu, Zap, TrendingUp, Award, Play, Pause, Coins, Thermometer, AlertCircle, Terminal, X, RefreshCw } from 'lucide-svelte'
   import { onDestroy, onMount, getContext } from 'svelte'
   import { invoke } from '@tauri-apps/api/core'
-  import { etcAccount, miningState } from '$lib/stores'
+  import { etcAccount, miningState, transactions } from '$lib/stores'
   import { getVersion } from "@tauri-apps/api/app";
   import { t } from 'svelte-i18n';
   import { goto } from '@mateothegreat/svelte5-router';
@@ -337,12 +337,18 @@
         currentBlock = results[1]
         peerCount = results[2]
         
-        // Update total rewards from actual balance
+        // Update total and session rewards from actual balance
         if (results[3] !== undefined) {
-          const balance = parseFloat(results[3])
-          if (!isNaN(balance) && balance > 0) {
-            // Use actual balance as total rewards
+          const balance = parseFloat(results[3] as string)
+          if (!isNaN(balance)) {
             $miningState.totalRewards = balance
+            if ($miningState.sessionStartBalance === undefined) {
+              $miningState.sessionStartBalance = balance
+            }
+            $miningState.lastKnownBalance = balance
+            const baseline = $miningState.sessionStartBalance ?? balance
+            const earned = balance - baseline
+            $miningState.sessionRewards = earned > 0 ? earned : 0
           }
         }
         
@@ -410,6 +416,9 @@
       // Store session start time in the store for persistence
       $miningState.sessionStartTime = sessionStartTime
       $miningState.activeThreads = actualThreads  // Use computed actualThreads
+      $miningState.sessionRewards = 0
+      $miningState.sessionStartBalance = $miningState.lastKnownBalance ?? $miningState.totalRewards
+      $miningState.lastKnownBalance = $miningState.sessionStartBalance
       totalHashes = 0 // Reset total hashes
       lastHashUpdate = Date.now()
       startUptimeTimer()
@@ -434,14 +443,30 @@
   async function stopMining() {
     try {
       await invoke('stop_miner')
+      const rewardAmount = parseFloat(($miningState.sessionRewards ?? 0).toFixed(6))
+      if (rewardAmount > 0) {
+        const rewardTx = {
+          id: Date.now(),
+          type: 'received',
+          amount: rewardAmount,
+          from: 'Mining rewards',
+          date: new Date(),
+          description: 'Mining session payout',
+          status: 'completed',
+        }
+        transactions.update((list) => [rewardTx, ...list])
+      }
       $miningState.isMining = false
       $miningState.hashRate = '0 H/s'
       $miningState.activeThreads = 0
       // Clear session start time
       $miningState.sessionStartTime = undefined
+      $miningState.sessionRewards = 0
+      $miningState.sessionStartBalance = undefined
+      $miningState.lastKnownBalance = undefined
       // Clear mining history when stopping
       $miningState.miningHistory = []
-      
+
       // stop uptime ticker
       if (uptimeInterval) {
         clearInterval(uptimeInterval as unknown as number)
@@ -452,6 +477,7 @@
       console.error('Failed to stop mining:', e)
     }
   }
+
 
   // Simulation removed; recent blocks come from backend
 
@@ -773,7 +799,8 @@
       <div class="flex items-center justify-between">
         <div>
           <p class="text-sm text-muted-foreground">{$t('mining.totalRewards')}</p>
-          <p class="text-2xl font-bold">{$miningState.totalRewards.toFixed(2)} Chiral</p>
+          <p class="text-2xl font-bold">{$miningState.sessionRewards.toFixed(2)} Chiral</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400">Lifetime: {$miningState.totalRewards.toFixed(2)} Chiral</p>
           <p class="text-xs text-green-600 flex items-center gap-1 mt-1">
             <TrendingUp class="h-3 w-3" />
             {$miningState.blocksFound} {$t('mining.blocksFound')}
