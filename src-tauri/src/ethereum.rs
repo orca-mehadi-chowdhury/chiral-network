@@ -20,15 +20,16 @@ pub struct AccountInfo {
     pub address: String,
     pub balance: String,
 }
-//Mined Block Struct to return to frontend
+
+// Recent mined block details returned to the frontend
 #[derive(Debug, Serialize)]
 pub struct MinedBlock {
     pub hash: String,
     pub nonce: Option<String>,
     pub difficulty: Option<String>,
-    pub timestamp: u64,
+    pub timestamp: u64,  // seconds since epoch
     pub number: u64,
-    pub reward: Option<f64>, //Chiral Earned
+    pub reward: Option<f64>, // in ether-like units (Chiral)
 }
 
 pub struct GethProcess {
@@ -1020,7 +1021,7 @@ pub async fn get_mined_blocks_count(miner_address: &str) -> Result<u64, String> 
     Ok(blocks_mined)
 }
 
-//Fetching Recent Blocks Mined by address, scanning backwards from latest
+// Fetch recent blocks mined by the provided address, scanning backwards from the tip.
 pub async fn get_recent_mined_blocks(
     miner_address: &str,
     lookback: u64,
@@ -1044,9 +1045,7 @@ pub async fn get_recent_mined_blocks(
         .await
         .map_err(|e| format!("RPC parse: {e}"))?;
 
-    let latest_hex: &str = latest_v["result"]
-        .as_str()
-        .ok_or("Invalid eth_blockNumber")?;
+    let latest_hex = latest_v["result"].as_str().ok_or("Invalid eth_blockNumber")?;
     let latest = u64::from_str_radix(latest_hex.trim_start_matches("0x"), 16)
         .map_err(|e| format!("hex parse: {e}"))?;
 
@@ -1056,9 +1055,7 @@ pub async fn get_recent_mined_blocks(
     let mut out: Vec<MinedBlock> = Vec::new();
 
     for n in (start..=latest).rev() {
-        if out.len() >= limit {
-            break;
-        }
+        if out.len() >= limit { break; }
 
         let block_v = client
             .post("http://127.0.0.1:8545")
@@ -1075,48 +1072,28 @@ pub async fn get_recent_mined_blocks(
             .await
             .map_err(|e| format!("RPC parse: {e}"))?;
 
-        if block_v.get("result").is_none() {
-            continue;
-        }
+        if block_v.get("result").is_none() { continue; }
         let b = &block_v["result"];
 
-        let miner = b
-            .get("author")
-            .and_then(|x| x.as_str())
+        let miner = b.get("author").and_then(|x| x.as_str())
             .or_else(|| b.get("miner").and_then(|x| x.as_str()))
             .unwrap_or("")
             .to_lowercase();
 
-        if miner != target {
-            continue;
-        }
+        if miner != target { continue; }
 
-        let hash = b
-            .get("hash")
-            .and_then(|x| x.as_str())
-            .unwrap_or_default()
-            .to_string();
-        let nonce = b
-            .get("nonce")
-            .and_then(|x| x.as_str())
-            .map(|s| s.to_string());
-        let difficulty = b
-            .get("difficulty")
-            .and_then(|x| x.as_str())
-            .map(|s| s.to_string());
-        let timestamp = b
-            .get("timestamp")
-            .and_then(|x| x.as_str())
+        let hash = b.get("hash").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+        let nonce = b.get("nonce").and_then(|x| x.as_str()).map(|s| s.to_string());
+        let difficulty = b.get("difficulty").and_then(|x| x.as_str()).map(|s| s.to_string());
+        let timestamp = b.get("timestamp").and_then(|x| x.as_str())
             .and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok())
             .unwrap_or(0);
-        let number = b
-            .get("number")
-            .and_then(|x| x.as_str())
+        let number = b.get("number").and_then(|x| x.as_str())
             .and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok())
             .unwrap_or(n);
 
-        // Compute miner reward by changes in balance from block to block (balance@n - balance@(n-1))
-        // This approximates the value of the block as this isn't publicly available.
+        // Compute miner reward by balance delta (balance@n - balance@(n-1))
+        // This approximates base subsidy + tips without needing fee tracing.
         let reward = {
             // Balance at block n
             let bal_n_v = client
@@ -1127,11 +1104,9 @@ pub async fn get_recent_mined_blocks(
                     "params": [target, format!("0x{:x}", number)],
                     "id": 1
                 }))
-                .send()
-                .await
+                .send().await
                 .map_err(|e| format!("RPC send: {e}"))?
-                .json::<serde_json::Value>()
-                .await
+                .json::<serde_json::Value>().await
                 .map_err(|e| format!("RPC parse: {e}"))?;
 
             let bal_prev_v = client
@@ -1142,11 +1117,9 @@ pub async fn get_recent_mined_blocks(
                     "params": [target, format!("0x{:x}", number.saturating_sub(1))],
                     "id": 1
                 }))
-                .send()
-                .await
+                .send().await
                 .map_err(|e| format!("RPC send: {e}"))?
-                .json::<serde_json::Value>()
-                .await
+                .json::<serde_json::Value>().await
                 .map_err(|e| format!("RPC parse: {e}"))?;
 
             let parse_u128 = |hex_str: &str| -> Option<u128> {
@@ -1154,14 +1127,8 @@ pub async fn get_recent_mined_blocks(
                 u128::from_str_radix(s, 16).ok()
             };
 
-            let bal_n = bal_n_v
-                .get("result")
-                .and_then(|v| v.as_str())
-                .and_then(parse_u128);
-            let bal_prev = bal_prev_v
-                .get("result")
-                .and_then(|v| v.as_str())
-                .and_then(parse_u128);
+            let bal_n = bal_n_v.get("result").and_then(|v| v.as_str()).and_then(parse_u128);
+            let bal_prev = bal_prev_v.get("result").and_then(|v| v.as_str()).and_then(parse_u128);
             if let (Some(bn), Some(bp)) = (bal_n, bal_prev) {
                 let delta_wei = bn.saturating_sub(bp);
                 // Convert to ether-like units (divide by 1e18)
@@ -1172,14 +1139,7 @@ pub async fn get_recent_mined_blocks(
             }
         };
 
-        out.push(MinedBlock {
-            hash,
-            nonce,
-            difficulty,
-            timestamp,
-            number,
-            reward,
-        });
+        out.push(MinedBlock { hash, nonce, difficulty, timestamp, number, reward });
     }
 
     Ok(out)

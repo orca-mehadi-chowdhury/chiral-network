@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts"> 
   import Card from '$lib/components/ui/card.svelte'
   import Button from '$lib/components/ui/button.svelte'
   import Badge from '$lib/components/ui/badge.svelte'
@@ -205,9 +205,10 @@
       if (isTauri) {
         await updateCpuTemperature()
       }
+    
     }, 1000) as unknown as number
   })
-  
+
   async function checkGethStatus() {
     try {
       isGethRunning = await invoke('is_geth_running') as boolean
@@ -221,16 +222,15 @@
             sessionStartTime = Date.now()
             startUptimeTimer()
           }
-        } else {
           // If we already think we're mining, just restart the uptime timer
+        } else {
           startUptimeTimer()
         }
       }
     } catch (e) {
       console.error('Failed to check geth status:', e)
-    }
+    } 
   }
-  
   async function updateMiningStats() {
     try {
       const [rate, block] = await Promise.all([
@@ -259,7 +259,7 @@
             // Fall back to simulation if no log data yet
             const elapsed = (Date.now() - sessionStartTime) / 1000 // seconds
             const baseRate = $miningState.activeThreads * 85000 // 85 KH/s per thread
-            const variation = Math.sin(elapsed / 10) * baseRate * 0.1 // ±10% variation
+            const variation = Math.sin(elapsed / 10) * baseRate * 0.1 // Â±10% variation
             const simulatedRate = baseRate + variation
             $miningState.hashRate = `~${formatHashRate(simulatedRate)}`
           }
@@ -352,7 +352,7 @@
           }
         }
         
-        // Update blocks mined from blockchain query
+        // Keep blocksFound counter in sync if provided
         if (results[4] !== undefined) {
           const blocksMined = results[4] as number;
           if (blocksMined > $miningState.blocksFound) {
@@ -771,7 +771,6 @@
   })
 
 </script>
-
 <div class="space-y-6">
   <div>
     <h1 class="text-3xl font-bold">{$t('mining.title')}</h1>
@@ -831,7 +830,7 @@
       <div class="flex items-center justify-between">
         <div>
           <p class="text-sm text-muted-foreground">{$t('mining.temperature')}</p>
-          <p class="text-2xl font-bold">{temperature.toFixed(1)}°C</p>
+          <p class="text-2xl font-bold">{temperature.toFixed(1)}&deg;C</p>
           <div class="mt-1">
             <Progress 
               value={temperature} 
