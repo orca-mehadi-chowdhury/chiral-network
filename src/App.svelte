@@ -13,7 +13,7 @@
     import RelayPage from './pages/Relay.svelte'
     import NotFound from './pages/NotFound.svelte'
     import ProxySelfTest from './routes/proxy-self-test.svelte'
-    import { networkStatus, settings, userLocation } from './lib/stores'
+import { networkStatus, settings, userLocation, wallet } from './lib/stores'
     import { Router, type RouteConfig, goto } from '@mateothegreat/svelte5-router';
     import {onMount, setContext} from 'svelte';
     import { tick } from 'svelte';
@@ -60,12 +60,30 @@
               const payload = event.payload;
               console.log('💰 Seeder payment notification received:', payload);
 
+              const currentWallet = get(wallet);
+              const currentAddress = currentWallet?.address?.toLowerCase();
+              const seederAddress = payload.seeder_wallet_address?.toLowerCase();
+
+              if (!currentAddress) {
+                console.warn('Skipping payment credit: no active wallet address');
+                return;
+              }
+
+              if (!seederAddress || currentAddress !== seederAddress) {
+                console.log('Ignoring payment notification not intended for this wallet', {
+                  currentAddress,
+                  seederAddress
+                });
+                return;
+              }
+
               // Credit the seeder's wallet
               const result = await paymentService.creditSeederPayment(
                 payload.file_hash,
                 payload.file_name,
                 payload.file_size,
                 payload.downloader_address,
+                payload.seeder_wallet_address,
                 payload.transaction_hash
               );
 

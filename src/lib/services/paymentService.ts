@@ -305,6 +305,7 @@ export class PaymentService {
     fileName: string,
     fileSize: number,
     downloaderAddress: string,
+    seederWalletAddress?: string,
     transactionHash?: string
   ): Promise<{ success: boolean; transactionId?: number; error?: string }> {
     try {
@@ -324,6 +325,22 @@ export class PaymentService {
 
       // Get current wallet state
       const currentWallet = get(wallet);
+      const currentWalletAddress = currentWallet.address?.toLowerCase();
+      const expectedWalletAddress = seederWalletAddress?.toLowerCase();
+
+      if (expectedWalletAddress) {
+        if (!currentWalletAddress || currentWalletAddress !== expectedWalletAddress) {
+          console.log('ℹ️ Skipping seeder credit for non-matching wallet', {
+            expectedWalletAddress,
+            currentWalletAddress
+          });
+          return {
+            success: false,
+            error: 'Payment intended for a different wallet'
+          };
+        }
+      }
+
       const currentTransactions = get(transactions);
 
       // Generate unique transaction ID
@@ -524,6 +541,7 @@ export class PaymentService {
         notification.file_name,
         notification.file_size,
         notification.downloader_address,
+        notification.seeder_wallet_address,
         notification.transaction_hash
       );
 
