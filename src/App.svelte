@@ -13,7 +13,7 @@
     import RelayPage from './pages/Relay.svelte'
     import NotFound from './pages/NotFound.svelte'
     import ProxySelfTest from './routes/proxy-self-test.svelte'
-import { networkStatus, settings, userLocation, wallet } from './lib/stores'
+    import { networkStatus, settings, userLocation, wallet } from './lib/stores'
     import { Router, type RouteConfig, goto } from '@mateothegreat/svelte5-router';
     import {onMount, setContext} from 'svelte';
     import { tick } from 'svelte';
@@ -60,22 +60,22 @@ import { networkStatus, settings, userLocation, wallet } from './lib/stores'
               const payload = event.payload;
               console.log('💰 Seeder payment notification received:', payload);
 
-              const currentWallet = get(wallet);
-              const currentAddress = currentWallet?.address?.toLowerCase();
-              const seederAddress = payload.seeder_wallet_address?.toLowerCase();
+              // Only credit the payment if we are the seeder (not the downloader)
+              const currentWalletAddress = get(wallet).address;
+              const seederAddress = payload.seeder_wallet_address;
 
-              if (!currentAddress) {
-                console.warn('Skipping payment credit: no active wallet address');
+              if (!seederAddress || !currentWalletAddress) {
+                console.warn('⚠️ Missing wallet addresses, skipping payment credit');
                 return;
               }
 
-              if (!seederAddress || currentAddress !== seederAddress) {
-                console.log('Ignoring payment notification not intended for this wallet', {
-                  currentAddress,
-                  seederAddress
-                });
+              // Check if this payment is meant for us (we are the seeder)
+              if (currentWalletAddress.toLowerCase() !== seederAddress.toLowerCase()) {
+                console.log(`⏭️ Skipping payment credit - not for us. Seeder: ${seederAddress}, Us: ${currentWalletAddress}`);
                 return;
               }
+
+              console.log('✅ This payment is for us! Crediting...');
 
               // Credit the seeder's wallet
               const result = await paymentService.creditSeederPayment(
