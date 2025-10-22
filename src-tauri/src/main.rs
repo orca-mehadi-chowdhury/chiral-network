@@ -685,7 +685,10 @@ async fn upload_versioned_file(
     is_encrypted: bool,
     encryption_method: Option<String>,
     key_fingerprint: Option<String>,
+    price: Option<f64>,
 ) -> Result<FileMetadata, String> {
+    // Get the active account address
+    let account = get_active_account(&state).await?;
     let dht_opt = { state.dht.lock().await.as_ref().cloned() };
     if let Some(dht) = dht_opt {
         // --- FIX: Calculate file_hash using file_transfer helper
@@ -2051,9 +2054,9 @@ fn get_default_storage_path(app: tauri::AppHandle) -> Result<String, String> {
         .path()
         .app_data_dir()
         .map_err(|e| format!("Could not get app data directory: {}", e))?;
-    
+
     let storage_path = app_data_dir.join("Storage");
-    
+
     storage_path
         .to_str()
         .map(|s| s.to_string())
@@ -2237,7 +2240,7 @@ async fn upload_file_to_network(
             }
 
             Ok(())
-        } else {
+        else {
             Err("DHT Service not running.".to_string())
         }
     } else {
@@ -2545,6 +2548,14 @@ async fn save_temp_file_for_upload(
     Ok(temp_file_path.to_string_lossy().to_string())
 }
 
+/// Get file size in bytes
+#[tauri::command]
+async fn get_file_size(file_path: String) -> Result<u64, String> {
+    let metadata = fs::metadata(&file_path)
+        .map_err(|e| format!("Failed to get file metadata: {}", e))?;
+    Ok(metadata.len())
+}
+
 #[tauri::command]
 async fn start_streaming_upload(
     file_name: String,
@@ -2683,6 +2694,8 @@ async fn upload_file_chunk(
             parent_hash: None,
             is_root: true,
             download_path: None,
+            price: None,
+            uploader_address: None,
         };
 
         // Store complete file data locally for seeding
@@ -4577,8 +4590,12 @@ async fn upload_and_publish_file(
                 true,                            // is_encrypted
                 Some("AES-256-GCM".to_string()), // Encryption method
                 None,                            // key_fingerprint (deprecated)
+                price,                           // price
+                Some(account.clone()),           // uploader_address
             )
             .await?;
+
+        println!("📦 BACKEND: Created versioned metadata with price: {:?}, uploader: {:?}", metadata.price, metadata.uploader_address);
 
         let version = metadata.version.unwrap_or(1);
 
