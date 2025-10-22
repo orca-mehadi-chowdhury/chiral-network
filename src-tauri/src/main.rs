@@ -201,6 +201,19 @@ pub struct StreamingUploadSession {
     pub file_data: Vec<u8>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RelayNodeStats {
+    peer_id: String,
+    alias: Option<String>,
+    reputation_score: f64,
+    reservations_accepted: u64,
+    circuits_established: u64,
+    circuits_successful: u64,
+    total_events: u64,
+    last_seen: u64,
+}
+
+
 struct AppState {
     geth: Mutex<GethProcess>,
     downloader: Arc<GethDownloader>,
@@ -322,7 +335,7 @@ async fn save_account_to_keystore(
     let mut keystore = Keystore::load()?;
     keystore.add_account(address, &private_key, &password)?;
     Ok(())
-}
+};
 
 #[tauri::command]
 async fn load_account_from_keystore(
@@ -716,7 +729,7 @@ async fn upload_versioned_file(
                 encryption_method,
                 key_fingerprint,
                 price,
-                Some(account.clone()),
+                Some(account),
             )
             .await?;
 
