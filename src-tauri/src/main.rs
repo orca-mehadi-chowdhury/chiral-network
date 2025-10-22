@@ -1549,17 +1549,6 @@ async fn get_dht_events(state: State<'_, AppState>) -> Result<Vec<String>, Strin
                 DhtEvent::PaymentNotificationReceived { from_peer, payload } => {
                     format!("payment_notification_received:{}:{:?}", from_peer, payload)
                 },
-                DhtEvent::BitswapChunkDownloaded {
-                    file_hash,
-                    chunk_index,
-                    total_chunks,
-                    chunk_size,
-                } => {
-                    format!(
-                        "bitswap_chunk_downloaded:{}:{}:{}:{}",
-                        file_hash, chunk_index, total_chunks, chunk_size
-                    )
-                }
                 DhtEvent::ReputationEvent {
                     peer_id,
                     event_type,
@@ -2229,18 +2218,13 @@ async fn upload_file_to_network(
                 ..Default::default()
             };
 
-                    match dht.publish_file(metadata.clone()).await {
-                        Ok(_) => info!("Published file metadata to DHT: {}", file_hash),
-                        Err(e) => warn!("Failed to publish file metadata to DHT: {}", e),
-                    };
-                }
-                Err(e) => {
-                    warn!("Failed to prepare versioned metadata: {}", e);
-                }
-            }
+            match dht.publish_file(metadata.clone()).await {
+                Ok(_) => info!("Published file metadata to DHT: {}", file_hash),
+                Err(e) => warn!("Failed to publish file metadata to DHT: {}", e),
+            };
 
             Ok(())
-        else {
+        } else {
             Err("DHT Service not running.".to_string())
         }
     } else {
@@ -4535,14 +4519,7 @@ async fn upload_and_publish_file(
     )
     .await?;
 
-    // 3. Store the canonical AES key in AppState, mapped by its Merkle root
-    {
-        let mut keys = state.canonical_aes_keys.lock().await;
-        keys.insert(merkle_root.clone(), canonical_aes_key);
-        info!("Stored canonical AES key for merkle root: {}", merkle_root);
-    }
-
-    // 4. Get file name and size
+    // 2. Get file name and size
     let file_name = file_name.unwrap_or_else(|| {
         std::path::Path::new(&file_path)
             .file_name()
@@ -4590,12 +4567,12 @@ async fn upload_and_publish_file(
                 true,                            // is_encrypted
                 Some("AES-256-GCM".to_string()), // Encryption method
                 None,                            // key_fingerprint (deprecated)
-                price,                           // price
-                Some(account.clone()),           // uploader_address
+                None,                            // price
+                None,                            // uploader_address
             )
             .await?;
 
-        println!("📦 BACKEND: Created versioned metadata with price: {:?}, uploader: {:?}", metadata.price, metadata.uploader_address);
+        println!("📦 BACKEND: Created versioned metadata");
 
         let version = metadata.version.unwrap_or(1);
 
