@@ -5095,3 +5095,4 @@ async fn get_multiaddresses(state: State<'_, AppState>) -> Result<Vec<String>, S
         Ok(Vec::new())
     }
 }
+}
