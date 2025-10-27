@@ -1,0 +1,49 @@
+{
+  "files": 265,
+  "lines": 137100,
+  "languages": {
+    "Rust": 31197,
+    "TypeScript": 13345,
+    "Svelte": 21350,
+    "JavaScript": 135,
+    "JSON": 18487,
+    "TOML": 175,
+    "Markdown": 2157,
+    "Solidity": 160,
+    "Other": 50094
+  },
+  "workspace_members": [
+    "src-tauri (chiral-network)",
+    "storage (chiral-storage)",
+    "relay (chiral-relay-daemon)"
+  ],
+  "top_import_hubs": [
+    { "path": "src-tauri/src/dht.rs", "imports": 68 },
+    { "path": "src-tauri/src/main.rs", "imports": 64 },
+    { "path": "src-tauri/src/webrtc_service.rs", "imports": 29 },
+    { "path": "src-tauri/src/manager.rs", "imports": 20 },
+    { "path": "storage/src/api.rs", "imports": 15 }
+  ],
+  "long_files": [
+    { "path": "tests/sample-files/large-test-file.bin", "lines": 16222, "note": "fixture" },
+    { "path": "src-tauri/gen/schemas/macOS-schema.json", "lines": 6440, "note": "generated" },
+    { "path": "src-tauri/gen/schemas/desktop-schema.json", "lines": 6440, "note": "generated" },
+    { "path": "src-tauri/src/dht.rs", "lines": 6846 },
+    { "path": "src-tauri/src/main.rs", "lines": 5135 },
+    { "path": "src-tauri/src/webrtc_service.rs", "lines": 1779 }
+  ],
+  "tests_count": 28,
+  "suspected_flakes": [
+    "src-tauri/tests/nat_traversal_e2e_test.rs",
+    "src-tauri/tests/tauri_ftp_commands_test.rs",
+    "relay/tests/relay_integration_test.rs",
+    "tests/multi-source-download.test.ts",
+    "tests/mining.test.ts",
+    "tests/diagnostics.test.ts"
+  ],
+  "ci_jobs": [
+    "frontend",
+    "backend",
+    "relay"
+  ]
+}
