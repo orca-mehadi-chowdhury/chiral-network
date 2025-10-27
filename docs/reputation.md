@@ -274,6 +274,69 @@ const bestPeers = await PeerSelectionService.selectPeersForDownload(
 - Check console for errors
 - Restart application
 
+## Peer Trust Levels
+
+This section replaces the placeholder Filecoin-style reputation workflow with a concrete trust engine that the Rust backend can enforce and the Svelte UI can surface.
+
+### Goals & Integration
+- Fold the existing `src-tauri/src/reputation.rs` placeholder into a reusable trust engine that downstream modules can query for scores and signed audit trails.
+- Keep the star-based UI (`src/pages/Network.svelte`, `src/pages/Reputation.svelte`) by mapping the new trust score to a 0–5 display while surfacing textual levels for accessibility.
+- Ensure every trust mutation is rooted in verifiable events (Merkle proof failures, payment receipts, DHT telemetry) so that penalties are defensible.
+
+### Score Model & Level Mapping
+- **Score range:** `[-1.0, +1.0]` with `0.0` neutral.
+- **Levels:** `BANNED ≤ -0.75`, `LOW (-0.75,-0.25]`, `NEUTRAL (-0.25,0.25]`, `HIGH (0.25,0.75]`, `VERIFIED > 0.75`.
+- **UI conversion:** `stars = clamp(0.0, 5.0, ((score + 1.0) / 2.0) * 5.0)` stored alongside the textual level so existing badges continue to render.
+- **Decay:** exponential toward `0.0` (half-life configurable, default 72h) processed by a background sweeper so that temporary disputes do not permanently scar a peer.
+- **Rate limits:** cap positive deltas per peer per trailing window to limit farming and require corroboration for large jumps.
+
+### Evidence Sources & Event Hooks
+- **Chunk validation failures** (`src-tauri/src/manager.rs:416`, `src/lib/services/p2pFileTransfer.ts:492`): emit `TrustEvent::InvalidChunk { peer_id, chunk, proof }` when Merkle verification fails or the frontend receives corrupt data twice.
+- **Malicious behaviour reports** (`src-tauri/src/dht.rs:6056`, `src-tauri/src/main.rs:3624`, `src/lib/services/peerService.ts:205`): wire the `report_malicious_peer` command to the trust engine so severity drives penalties after on-chain or proof-backed validation.
+- **Payment outcomes** (`src-tauri/src/dht.rs:3514`, `src-tauri/src/main.rs:1193`, `src-tauri/src/ethereum.rs`): reward `PaymentSuccess` events tied to the emitter, penalize `PaymentFailure` or missing escrow release when a timeout elapses without matching receipt.
+- **Transfer telemetry** (`src-tauri/src/dht.rs:6038`, `record_transfer_success/failure`): convert the existing reliability heuristics into small trust nudges so long-lived, successful peers drift upward.
+- **Protocol violations** (`SwarmEvent::ConnectionClosed` causes, `identify` protocol mismatch, `proxy_verify` failures at `src-tauri/src/dht.rs:5844`): emit `TrustEvent::ProtocolViolation` when peers repeatedly disconnect abruptly or spoof capabilities.
+
+### Planned Code Changes (Rust)
+- `src-tauri/src/reputation.rs`: refactor into `trust` module exporting `TrustEngine`, `TrustScore`, `TrustLevel`, `TrustEvent`, `TrustLedger`, reusing signing/Merkle helpers but storing canonical score & decay metadata.
+- `src-tauri/src/dht.rs`: load `TrustEngine` into `DhtService`, observe events inside swarm handling, gate dials/accepts for `BANNED` peers, and expose new admin Tauri commands (`get_peer_trust`, `adjust_peer_trust`).
+- `src-tauri/src/peer_selection.rs`: add `trust_score: f64`, `trust_level: TrustLevel` to `PeerMetrics`, favour higher levels when ranking, and request updates from `TrustEngine` when metrics mutate.
+- `src-tauri/src/main.rs`: extend `AppState` to hold `trust: Arc<TrustEngine>`, update commands (`get_peer_metrics`, `report_malicious_peer`, payment handlers) to emit typed `TrustEvent`s, and surface trust metadata in API responses.
+- `src-tauri/src/download_scheduler.rs` & `src-tauri/src/multi_source_download.rs`: ensure scheduling prefers peers above the configured minimum level and records trust evidence after each chunk.
+- `src-tauri/src/analytics.rs` & telemetry exporters: add metrics `trust_score`, `trust_level_total` for dashboards.
+
+### Planned Code Changes (Svelte)
+- `src/lib/services/peerService.ts`: extend `BackendPeerMetrics` to include `trust_score`, `trust_level`, map to star display, and surface enforcement hints in tooltips.
+- `src/lib/stores.ts`: persist trust metadata inside `PeerInfo` and new `TrustSummary` store for Reputation page filters.
+- `src/pages/Network.svelte` & `src/pages/Reputation.svelte`: render badges (`VERIFIED`, `HIGH`, etc.), add sort/filter by level, and include warning banners when interacting with `LOW` peers.
+- `src/pages/Account.svelte` (blacklist UI): wire the “report malicious peer” quick actions to the trust event flow and show when penalties were applied.
+
+### Config & Defaults
+```toml
+[trust]
+enabled = true
+half_life_hours = 72
+min_level_to_accept = "LOW"
+reward = { successful_transfer = 0.01, payment_success = 0.05, heartbeat = 0.005 }
+penalty = { invalid_chunk = -0.15, payment_failure = -0.25, malicious_report = -0.5 }
+shadow_mode = true
+```
+- Mirror keys in `AppSettings` (`src/lib/stores.ts`) so the settings UI can toggle enforcement, half-life, and minimum level thresholds.
+
+### Persistence & Migration
+- Store trust state in a new `trust.redb` (or similar) file managed by `src-tauri/src/trust/store.rs`, keyed by `PeerId` → `{score: f64, level: TrustLevel, last_update: u64, history_root: String}`.
+- Migration steps:
+  1. Ship new binary with `trust.enabled=false`, bootstrap DB with neutral entries for all known peers.
+  2. Backfill from existing `PeerMetrics` reliability (simple mapping) to seed initial scores.
+  3. Keep legacy `ReputationSystem` epoch logic for audit trails until smart-contract anchoring is ready, but mark it deprecated.
+- Rollback: delete/backup `trust.redb` and disable the feature flag to fall back to heuristic sorting only.
+
+### Test Plan
+- **Unit:** trust math (level thresholds, decay, clamp), serde round-trips for persisted state, payment/chunk event handlers.
+- **Integration:** simulated swarm interactions ensuring `BANNED` peers are rejected, successful transfers lift a peer above `NEUTRAL`, corrupt chunk reports trigger penalties only with proof.
+- **Adversarial:** Sybil attempts (burst of fake positives), replayed payment receipts, conflicting malicious reports without proof.
+- **UI:** Network and Reputation pages render badges consistently, warnings appear for low-trust peers, admin modals display trust history.
+
 ## See Also
 
 - [Network Protocol](network-protocol.md) - Peer discovery details
