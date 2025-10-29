@@ -4776,7 +4776,7 @@ struct ActiveDownload {
     queries: HashMap<beetswap::QueryId, u32>,
     temp_file_path: PathBuf,  // Path with .tmp suffix
     final_file_path: PathBuf, // Final path without .tmp
-    mmap: Arc<std::sync::Mutex<MmapMut>>,
+    mmap: Arc<std::sync::Mutex<Option<MmapMut>>>,
     received_chunks: Arc<std::sync::Mutex<HashSet<u32>>>,
     total_chunks: u32,
     chunk_offsets: Vec<u64>,
@@ -4815,7 +4815,7 @@ impl ActiveDownload {
             queries,
             temp_file_path,
             final_file_path,
-            mmap: Arc::new(std::sync::Mutex::new(mmap)),
+            mmap: Arc::new(std::sync::Mutex::new(Some(mmap))),
             received_chunks: Arc::new(std::sync::Mutex::new(HashSet::new())),
             total_chunks,
             chunk_offsets,
@@ -4823,8 +4823,13 @@ impl ActiveDownload {
     }
 
     fn write_chunk(&self, chunk_index: u32, data: &[u8], offset: u64) -> std::io::Result<()> {
-        let mut mmap = self.mmap.lock()
+        let mut mmap_guard = self
+            .mmap
+            .lock()
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Mutex lock failed: {}", e)))?;
+        let mmap = mmap_guard
+            .as_mut()
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "Memory map no longer available"))?;
         let start = offset as usize;
         let end = start + data.len();
 
@@ -4836,6 +4841,8 @@ impl ActiveDownload {
         }
 
         mmap[start..end].copy_from_slice(data);
+        drop(mmap_guard);
+
         self.received_chunks.lock()
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Mutex lock failed: {}", e)))?
             .insert(chunk_index);
@@ -4851,25 +4858,44 @@ impl ActiveDownload {
     }
 
     fn flush(&self) -> std::io::Result<()> {
-        self.mmap.lock()
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Mutex lock failed: {}", e)))?
-            .flush()
+        let mut mmap_guard = self
+            .mmap
+            .lock()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Mutex lock failed: {}", e)))?;
+
+        if let Some(mmap) = mmap_guard.as_mut() {
+            mmap.flush()?;
+        }
+
+        Ok(())
     }
 
     fn read_complete_file(&self) -> std::io::Result<Vec<u8>> {
-        let mmap = self.mmap.lock()
+        let mmap_guard = self
+            .mmap
+            .lock()
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Mutex lock failed: {}", e)))?;
-        Ok(mmap.to_vec())
+
+        Ok(mmap_guard
+            .as_ref()
+            .map(|m| m.to_vec())
+            .unwrap_or_default())
     }
 
     /// Finalize the download by renaming .tmp file to final filename
     fn finalize(&self) -> std::io::Result<()> {
-        // First, flush to ensure all data is written
-        self.flush()?;
+        {
+            // Flush any pending writes and drop the mmap so Windows releases the file handle
+            let mut mmap_guard = self
+                .mmap
+                .lock()
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Mutex lock failed: {}", e)))?;
 
-        // Drop the mmap to release the file handle
-        if let Ok(mmap_guard) = self.mmap.lock() {
-            drop(mmap_guard);
+            if let Some(mmap) = mmap_guard.as_mut() {
+                mmap.flush()?;
+            }
+
+            mmap_guard.take();
         }
 
         info!(
@@ -4886,6 +4912,10 @@ impl ActiveDownload {
 
     /// Clean up temp file (only call if download fails/is cancelled)
     fn cleanup(&self) {
+        if let Ok(mut mmap_guard) = self.mmap.lock() {
+            mmap_guard.take();
+        }
+
         if self.temp_file_path.exists() {
             if let Err(e) = std::fs::remove_file(&self.temp_file_path) {
                 error!(
