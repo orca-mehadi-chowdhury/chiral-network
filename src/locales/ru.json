@@ -569,6 +569,23 @@
       "savePasswordDisabled": "Для безопасности функция 'Сохранить пароль' в настоящее время отключена. Пожалуйста, вводите пароль каждый раз при разблокировке аккаунта.",
       "savePasswordWarning": "Предупреждение: Сохранение пароля локально удобно, но менее безопасно. Используйте с осторожностью.",
       "addressMismatch": "Ошибка расшифровки: адрес не совпадает."
+    },
+    "autoSave": {
+      "title": "Protect Your Wallet",
+      "desc": "Set a password so Chiral can save your key locally and restore it automatically next time.",
+      "passwordLabel": "Create password",
+      "confirmLabel": "Confirm password",
+      "mismatch": "Passwords do not match.",
+      "invalid": "Password does not meet strength requirements.",
+      "button": "Save and Continue",
+      "toastSuccess": "Wallet saved to local keystore.",
+      "toastFailed": "Automatic keystore save failed. Please try again.",
+      "backgroundFailed": "Automatic keystore save failed; stored password cleared."
+    },
+    "autoLoad": {
+      "success": "Wallet restored from local keystore.",
+      "error": "Failed to restore wallet automatically. Please unlock manually.",
+      "errorToast": "Automatic wallet restore failed. Please unlock manually."
     }
   },
   "blacklist": {

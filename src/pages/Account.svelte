@@ -6,6 +6,7 @@
   import { Wallet, Copy, ArrowUpRight, ArrowDownLeft, History, Coins, Plus, Import, BadgeX, KeyRound, FileText } from 'lucide-svelte'
   import DropDown from "$lib/components/ui/dropDown.svelte";
   import { wallet, etcAccount, blacklist} from '$lib/stores' 
+  import type { ETCAccount } from '$lib/stores';
   import { walletService } from '$lib/wallet';
   import { transactions } from '$lib/stores';
   import { derived } from 'svelte/store'
@@ -19,6 +20,14 @@
   import { showToast } from '$lib/toast'
   import { get } from 'svelte/store'
   import { totalEarned, totalSpent, miningState } from '$lib/stores';
+  import {
+    getStoredKeystorePassword,
+    setStoredKeystorePassword,
+    clearStoredKeystorePassword,
+    getStoredKeystoreAddress,
+    setStoredKeystoreAddress,
+    clearStoredKeystoreAddress
+  } from '$lib/services/autoKeystore';
 
   const tr = (k: string, params?: Record<string, any>): string => (get(t) as (key: string, params?: any) => string)(k, params)
   
@@ -61,6 +70,7 @@
   let qrCodeDataUrl = ''
   let showScannerModal = false;
   let keystorePassword = '';
+  let keystorePasswordConfirm = '';
   let isSavingToKeystore = false;
   let keystoreSaveMessage = '';
   let keystoreAccounts: string[] = [];
@@ -69,6 +79,12 @@
   let isLoadingFromKeystore = false;
   let keystoreLoadMessage = '';
   let rememberKeystorePassword = false;
+  let autoKeystorePassword: string | null = null;
+  let autoKeystoreAddress: string | null = null;
+  let pendingAutoSaveAccount: ETCAccount | null = null;
+  let showAutoKeystoreModal = false;
+  let autoKeystoreError = '';
+  let isAutoSavingKeystore = false;
 
   // Rate limiter for keystore unlock (5 attempts per minute)
   const keystoreRateLimiter = new RateLimiter(5, 60000);
@@ -524,10 +540,52 @@
   $: void $pendingCount;
 
   onMount(async () => {
-    await walletService.initialize();
-    await loadKeystoreAccountsList();
+    autoKeystorePassword = await getStoredKeystorePassword();
+    autoKeystoreAddress = await getStoredKeystoreAddress();
 
-    if ($etcAccount && isGethRunning) {
+    await walletService.initialize();
+    const accounts = await loadKeystoreAccountsList();
+
+    if (isTauri && autoKeystorePassword && accounts.length > 0) {
+      const currentAccount = get(etcAccount);
+      const preferred =
+        autoKeystoreAddress && accounts.includes(autoKeystoreAddress)
+          ? autoKeystoreAddress
+          : accounts[0];
+
+      if (
+        !currentAccount ||
+        currentAccount.address.toLowerCase() !== preferred.toLowerCase()
+      ) {
+        isLoadingFromKeystore = true;
+        try {
+          const loadedAccount = await walletService.loadFromKeystore(
+            preferred,
+            autoKeystorePassword
+          );
+          autoKeystoreAddress = loadedAccount.address;
+          await setStoredKeystoreAddress(loadedAccount.address);
+          loadKeystorePassword = autoKeystorePassword;
+          selectedKeystoreAccount = loadedAccount.address;
+          keystoreLoadMessage = tr('keystore.autoLoad.success');
+        } catch (error) {
+          console.error('Failed to auto-load keystore:', error);
+          keystoreLoadMessage = tr('keystore.autoLoad.error');
+          showToast(tr('keystore.autoLoad.errorToast'), 'error');
+          await clearStoredKeystorePassword();
+          await clearStoredKeystoreAddress();
+          autoKeystorePassword = null;
+          autoKeystoreAddress = null;
+        } finally {
+          isLoadingFromKeystore = false;
+        }
+      } else {
+        loadKeystorePassword = autoKeystorePassword;
+      }
+    }
+
+    const activeAccount = get(etcAccount);
+    if (activeAccount && isTauri && isGethRunning) {
       // IMPORTANT: refreshTransactions must run BEFORE refreshBalance
       await walletService.refreshTransactions();
       await walletService.refreshBalance();
@@ -541,6 +599,102 @@
     } catch (error) {
       console.error('Failed to fetch balance:', error)
     }
+  }
+
+  function openAutoKeystoreModal(account: ETCAccount) {
+    pendingAutoSaveAccount = account;
+    keystorePassword = '';
+    keystorePasswordConfirm = '';
+    autoKeystoreError = '';
+    showAutoKeystoreModal = true;
+  }
+
+  function cancelAutoKeystoreModal() {
+    showAutoKeystoreModal = false;
+    pendingAutoSaveAccount = null;
+    autoKeystoreError = '';
+    keystorePassword = '';
+    keystorePasswordConfirm = '';
+  }
+
+  async function confirmAutoKeystoreSave() {
+    if (!pendingAutoSaveAccount) {
+      return;
+    }
+
+    if (!keystorePassword) {
+      autoKeystoreError = tr('keystore.autoSave.invalid');
+      return;
+    }
+    if (!isPasswordValid) {
+      autoKeystoreError = tr('keystore.autoSave.invalid');
+      return;
+    }
+    if (keystorePassword !== keystorePasswordConfirm) {
+      autoKeystoreError = tr('keystore.autoSave.mismatch');
+      return;
+    }
+
+    isAutoSavingKeystore = true;
+    isSavingToKeystore = true;
+    autoKeystoreError = '';
+
+    try {
+      await walletService.saveToKeystore(keystorePassword, pendingAutoSaveAccount);
+      await setStoredKeystorePassword(keystorePassword);
+      await setStoredKeystoreAddress(pendingAutoSaveAccount.address);
+
+      autoKeystorePassword = keystorePassword;
+      autoKeystoreAddress = pendingAutoSaveAccount.address;
+      loadKeystorePassword = keystorePassword;
+      selectedKeystoreAccount = pendingAutoSaveAccount.address;
+
+      await loadKeystoreAccountsList();
+      showToast(tr('keystore.autoSave.toastSuccess'), 'success');
+      showAutoKeystoreModal = false;
+      pendingAutoSaveAccount = null;
+      keystorePassword = '';
+      keystorePasswordConfirm = '';
+    } catch (error) {
+      console.error('Failed to save keystore automatically:', error);
+      autoKeystoreError = tr('keystore.autoSave.toastFailed');
+      showToast(tr('keystore.autoSave.toastFailed'), 'error');
+    } finally {
+      isAutoSavingKeystore = false;
+      isSavingToKeystore = false;
+    }
+  }
+
+  async function ensureAccountPersisted(account: ETCAccount) {
+    if (!isTauri) {
+      return;
+    }
+
+    if (autoKeystorePassword) {
+      isAutoSavingKeystore = true;
+      isSavingToKeystore = true;
+      try {
+        await walletService.saveToKeystore(autoKeystorePassword, account);
+        await setStoredKeystoreAddress(account.address);
+        autoKeystoreAddress = account.address;
+        selectedKeystoreAccount = account.address;
+        await loadKeystoreAccountsList();
+      } catch (error) {
+        console.error('Automatic keystore save failed:', error);
+        showToast(tr('keystore.autoSave.backgroundFailed'), 'error');
+        await clearStoredKeystorePassword();
+        await clearStoredKeystoreAddress();
+        autoKeystorePassword = null;
+        autoKeystoreAddress = null;
+        openAutoKeystoreModal(account);
+      } finally {
+        isAutoSavingKeystore = false;
+        isSavingToKeystore = false;
+      }
+      return;
+    }
+
+    openAutoKeystoreModal(account);
   }
 
   
@@ -558,6 +712,8 @@
 
     transactions.set([])
     blacklist.set([])   
+
+    await ensureAccountPersisted({ address: account.address, private_key: account.private_key })
 
     showToast('Account Created Successfully!', 'success')
     
@@ -582,6 +738,17 @@
     try {
         if (isTauri) {
             await walletService.saveToKeystore(keystorePassword);
+            const account = get(etcAccount);
+            if (account) {
+              await setStoredKeystoreAddress(account.address);
+              autoKeystoreAddress = account.address;
+            }
+            if (rememberKeystorePassword) {
+              await setStoredKeystorePassword(keystorePassword);
+              autoKeystorePassword = keystorePassword;
+              loadKeystorePassword = keystorePassword;
+            }
+            await loadKeystoreAccountsList();
             keystoreSaveMessage = tr('keystore.success');
         } else {
             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -659,6 +826,8 @@
         pendingTransactions: 0
       }))
       importPrivateKey = ''
+
+      await ensureAccountPersisted({ address: account.address, private_key: account.private_key })
 
 
       showToast('Account imported successfully!', 'success')
@@ -749,16 +918,29 @@
     hdAccounts = updated;
   }
 
-  async function loadKeystoreAccountsList() {
+  async function loadKeystoreAccountsList(): Promise<string[]> {
+    if (!isTauri) {
+      return [];
+    }
+
     try {
-      if (!isTauri) return;
       const accounts = await walletService.listKeystoreAccounts();
       keystoreAccounts = accounts;
+
       if (accounts.length > 0) {
-        selectedKeystoreAccount = accounts[0];
+        const preferred =
+          autoKeystoreAddress && accounts.includes(autoKeystoreAddress)
+            ? autoKeystoreAddress
+            : accounts[0];
+        selectedKeystoreAccount = preferred;
+      } else {
+        selectedKeystoreAccount = '';
       }
+
+      return accounts;
     } catch (error) {
       console.error('Failed to list keystore accounts:', error);
+      return [];
     }
   }
 
@@ -814,6 +996,13 @@
             keystoreRateLimiter.reset('keystore-unlock');
 
             saveOrClearPassword(selectedKeystoreAccount, loadKeystorePassword);
+
+            autoKeystoreAddress = account.address;
+            await setStoredKeystoreAddress(account.address);
+            if (rememberKeystorePassword && loadKeystorePassword) {
+              await setStoredKeystorePassword(loadKeystorePassword);
+              autoKeystorePassword = loadKeystorePassword;
+            }
 
             wallet.update(w => ({
                 ...w,
@@ -2306,6 +2495,78 @@
           </Button>
         </div>
       </div>
+    </div>
+  {/if}
+
+  {#if showAutoKeystoreModal}
+    <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <Card class="w-full max-w-md p-6 space-y-4 shadow-xl text-card-foreground">
+        <h3 class="text-lg font-semibold">{$t('keystore.autoSave.title')}</h3>
+        <p class="text-sm text-muted-foreground">{$t('keystore.autoSave.desc')}</p>
+
+        <div class="space-y-3">
+          <div>
+            <Label for="auto-keystore-password">{$t('keystore.autoSave.passwordLabel')}</Label>
+            <Input
+              id="auto-keystore-password"
+              type="password"
+              bind:value={keystorePassword}
+              placeholder={$t('placeholders.password')}
+              class="mt-2"
+              autocomplete="new-password"
+            />
+          </div>
+          <div>
+            <Label for="auto-keystore-confirm">{$t('keystore.autoSave.confirmLabel')}</Label>
+            <Input
+              id="auto-keystore-confirm"
+              type="password"
+              bind:value={keystorePasswordConfirm}
+              placeholder={$t('placeholders.password')}
+              class="mt-2"
+              autocomplete="new-password"
+            />
+          </div>
+          {#if keystorePassword}
+            <div class="space-y-2">
+              <div class="h-1 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                  class="h-full transition-all duration-300 {passwordStrength === 'strong' ? 'bg-green-500 w-full' : passwordStrength === 'medium' ? 'bg-yellow-500 w-2/3' : 'bg-red-500 w-1/3'}"
+                ></div>
+              </div>
+              <span class="text-xs {passwordStrength === 'strong' ? 'text-green-600' : passwordStrength === 'medium' ? 'text-yellow-600' : 'text-red-600'}">
+                {passwordFeedback}
+              </span>
+            </div>
+            <ul class="text-xs text-muted-foreground space-y-1">
+              <li class="{keystorePassword.length >= 8 ? 'text-green-600' : ''}">• {$t('password.requirements.length')}</li>
+              <li class="{/[A-Z]/.test(keystorePassword) ? 'text-green-600' : ''}">• {$t('password.requirements.uppercase')}</li>
+              <li class="{/[a-z]/.test(keystorePassword) ? 'text-green-600' : ''}">• {$t('password.requirements.lowercase')}</li>
+              <li class="{/[0-9]/.test(keystorePassword) ? 'text-green-600' : ''}">• {$t('password.requirements.number')}</li>
+              <li class="{/[!@#$%^&*(),.?\":{}|<>]/.test(keystorePassword) ? 'text-green-600' : ''}">• {$t('password.requirements.special')}</li>
+            </ul>
+          {/if}
+          {#if autoKeystoreError}
+            <p class="text-sm text-red-500">{autoKeystoreError}</p>
+          {/if}
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2">
+          <Button variant="ghost" on:click={cancelAutoKeystoreModal}>
+            {$t('actions.cancel')}
+          </Button>
+          <Button
+            on:click={confirmAutoKeystoreSave}
+            disabled={isAutoSavingKeystore || !keystorePassword || !isPasswordValid || keystorePassword !== keystorePasswordConfirm}
+          >
+            {#if isAutoSavingKeystore}
+              {$t('actions.saving')}
+            {:else}
+              {$t('keystore.autoSave.button')}
+            {/if}
+          </Button>
+        </div>
+      </Card>
     </div>
   {/if}
 

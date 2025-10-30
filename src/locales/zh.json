@@ -484,6 +484,23 @@
       "savePasswordWarning": "警告：在本地保存密码虽然方便，但安全性较低。请谨慎使用。",
       "addressMismatch": "解密错误：地址不匹配。"
     },
+    "autoSave": {
+      "title": "Protect Your Wallet",
+      "desc": "Set a password so Chiral can save your key locally and restore it automatically next time.",
+      "passwordLabel": "Create password",
+      "confirmLabel": "Confirm password",
+      "mismatch": "Passwords do not match.",
+      "invalid": "Password does not meet strength requirements.",
+      "button": "Save and Continue",
+      "toastSuccess": "Wallet saved to local keystore.",
+      "toastFailed": "Automatic keystore save failed. Please try again.",
+      "backgroundFailed": "Automatic keystore save failed; stored password cleared."
+    },
+    "autoLoad": {
+      "success": "Wallet restored from local keystore.",
+      "error": "Failed to restore wallet automatically. Please unlock manually.",
+      "errorToast": "Automatic wallet restore failed. Please unlock manually."
+    },
     "password": {
       "password": "密码"
     }
