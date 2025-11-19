@@ -1,16 +1,14 @@
 /// Test client for relay authentication
 /// Usage: cargo run --bin test_client -- <relay_multiaddr> <token>
 /// Example: cargo run --bin test_client -- /ip4/127.0.0.1/tcp/4002/p2p/12D3KooWMTYkYDfz1EK8SApC6TtiXRwr8My9SnADzT1HsjSc4T9e mysecrettoken1
-
 use anyhow::{Context, Result};
 use clap::Parser;
 use futures::StreamExt;
 use libp2p::{
     identify, identity, noise, ping, relay,
     request_response::{
-        Behaviour as RequestResponse, Config as RequestResponseConfig, 
-        Event as RequestResponseEvent, Message as RequestResponseMessage,
-        ProtocolSupport,
+        Behaviour as RequestResponse, Config as RequestResponseConfig,
+        Event as RequestResponseEvent, Message as RequestResponseMessage, ProtocolSupport,
     },
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, yamux, Multiaddr, PeerId, Swarm,
@@ -79,10 +77,7 @@ fn create_client_swarm() -> Result<Swarm<ClientBehaviour>> {
     info!("Client Peer ID: {}", local_peer_id);
 
     let relay_auth_protocols = std::iter::once((RelayAuthProtocol(), ProtocolSupport::Full));
-    let relay_auth = RequestResponse::new(
-        relay_auth_protocols,
-        RequestResponseConfig::default(),
-    );
+    let relay_auth = RequestResponse::new(relay_auth_protocols, RequestResponseConfig::default());
 
     let behaviour = ClientBehaviour {
         ping: ping::Behaviour::new(ping::Config::new()),
@@ -234,8 +229,14 @@ async fn main() -> Result<()> {
     println!("\n═══════════════════════════════════════");
     println!("           TEST SUMMARY");
     println!("═══════════════════════════════════════");
-    println!("Connected:              {}", if connected { "✅ YES" } else { "❌ NO" });
-    println!("Auth Request Sent:      {}", if auth_sent { "✅ YES" } else { "❌ NO" });
+    println!(
+        "Connected:              {}",
+        if connected { "✅ YES" } else { "❌ NO" }
+    );
+    println!(
+        "Auth Request Sent:      {}",
+        if auth_sent { "✅ YES" } else { "❌ NO" }
+    );
     println!(
         "Auth Response:          {}",
         match auth_response {

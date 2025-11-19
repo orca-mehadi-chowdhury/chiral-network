@@ -1,5 +1,6 @@
 import { writable, derived } from "svelte/store";
 import { normalizeRegion, GEO_REGIONS, UNKNOWN_REGION_ID } from "$lib/geo";
+import { DEFAULT_RELAY_LIST, DEFAULT_RELAY_MULTIADDR } from "$lib/constants/network";
 
 export interface FileItem {
   id: string;
@@ -475,11 +476,11 @@ export const settings = writable<AppSettings>({
   ipPrivacyMode: "off",
   trustedProxyRelays: [],
   disableDirectNatTraversal: false,
-  enableAutonat: false, // Disabled by default - enable if you need NAT detection
+  enableAutonat: true, // Enabled by default for better reachability checks
   autonatProbeInterval: 30, // 30 seconds default
   autonatServers: [], // Use bootstrap nodes by default
-  enableAutorelay: false, // Disabled by default - enable if you need relay connections
-  preferredRelays: [], // Use bootstrap nodes as relays by default
+  enableAutorelay: true, // Enabled by default - ensures relay connectivity
+  preferredRelays: [...DEFAULT_RELAY_LIST],
   enableRelayServer: false, // Disabled by default - enable to help relay traffic for others
   relayServerAlias: "", // Empty by default - user can set a friendly name
   anonymousMode: false,
@@ -503,7 +504,7 @@ export const settings = writable<AppSettings>({
   enableFileLogging: false, // Disabled by default
   maxLogSizeMB: 10, // 10 MB per log file by default
   pricePerMb: 0.001, // Default price: 0.001, until ability to set pricePerMb is there, then change to 0.001 Chiral per MB
-  customBootstrapNodes: [], // Empty by default - use hardcoded bootstrap nodes
+  customBootstrapNodes: [...DEFAULT_RELAY_LIST], // Ensure a reachable bootstrap node
   autoStartDHT: false, // Don't auto-start DHT by default
 });
 

@@ -6,7 +6,6 @@
 /// 3. Metrics export functionality
 /// 4. Multi-instance deployment
 /// 5. Protocol support (AutoNAT, Identify, Ping)
-
 use futures::{FutureExt, StreamExt};
 use libp2p::{
     autonat, identify, identity,
@@ -15,10 +14,7 @@ use libp2p::{
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, yamux, Multiaddr, PeerId,
 };
-use std::{
-    net::Ipv4Addr,
-    time::Duration,
-};
+use std::{net::Ipv4Addr, time::Duration};
 use tokio::time::timeout;
 
 // Test behaviour for relay server (same as main.rs)
@@ -84,10 +80,8 @@ struct SimpleClientBehaviour {
 }
 
 /// Helper to create a simple test client
-async fn create_test_client() -> Result<
-    (libp2p::Swarm<SimpleClientBehaviour>, PeerId),
-    Box<dyn std::error::Error>,
-> {
+async fn create_test_client(
+) -> Result<(libp2p::Swarm<SimpleClientBehaviour>, PeerId), Box<dyn std::error::Error>> {
     let local_key = identity::Keypair::generate_ed25519();
     let local_peer_id = PeerId::from(local_key.public());
 

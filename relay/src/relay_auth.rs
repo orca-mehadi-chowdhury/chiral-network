@@ -1,9 +1,7 @@
-use libp2p::{
-    request_response::Codec,
-};
 use async_trait::async_trait;
+use futures::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use libp2p::request_response::Codec;
 use std::io;
-use futures::io::{AsyncRead, AsyncWrite, AsyncReadExt, AsyncWriteExt};
 
 #[derive(Clone)]
 pub struct RelayAuthProtocol();
@@ -35,7 +33,7 @@ async fn read_framed<T: AsyncRead + Unpin + Send>(io: &mut T) -> io::Result<Vec<
     let mut len_buf = [0u8; 4];
     io.read_exact(&mut len_buf).await?;
     let len = u32::from_le_bytes(len_buf) as usize;
-    
+
     // Prevent reading excessively large data
     if len > 1024 {
         return Err(io::Error::new(
@@ -43,7 +41,7 @@ async fn read_framed<T: AsyncRead + Unpin + Send>(io: &mut T) -> io::Result<Vec<
             format!("Token length {} exceeds maximum 1024 bytes", len),
         ));
     }
-    
+
     let mut data = vec![0u8; len];
     io.read_exact(&mut data).await?;
     Ok(data)
@@ -57,7 +55,7 @@ async fn write_framed<T: AsyncWrite + Unpin + Send>(io: &mut T, data: Vec<u8>) -
             format!("Token length {} exceeds maximum 1024 bytes", data.len()),
         ));
     }
-    
+
     io.write_all(&(data.len() as u32).to_le_bytes()).await?;
     io.write_all(&data).await?;
     io.flush().await
@@ -69,7 +67,11 @@ impl Codec for RelayAuthCodec {
     type Request = RelayAuthRequest;
     type Response = RelayAuthResponse;
 
-    async fn read_request<T>(&mut self, _: &RelayAuthProtocol, io: &mut T) -> io::Result<Self::Request>
+    async fn read_request<T>(
+        &mut self,
+        _: &RelayAuthProtocol,
+        io: &mut T,
+    ) -> io::Result<Self::Request>
     where
         T: AsyncRead + Unpin + Send,
     {
@@ -77,7 +79,11 @@ impl Codec for RelayAuthCodec {
         Ok(RelayAuthRequest(data))
     }
 
-    async fn read_response<T>(&mut self, _: &RelayAuthProtocol, io: &mut T) -> io::Result<Self::Response>
+    async fn read_response<T>(
+        &mut self,
+        _: &RelayAuthProtocol,
+        io: &mut T,
+    ) -> io::Result<Self::Response>
     where
         T: AsyncRead + Unpin + Send,
     {
@@ -86,14 +92,24 @@ impl Codec for RelayAuthCodec {
         Ok(RelayAuthResponse(buf[0] == 1))
     }
 
-    async fn write_request<T>(&mut self, _: &RelayAuthProtocol, io: &mut T, RelayAuthRequest(data): RelayAuthRequest) -> io::Result<()>
+    async fn write_request<T>(
+        &mut self,
+        _: &RelayAuthProtocol,
+        io: &mut T,
+        RelayAuthRequest(data): RelayAuthRequest,
+    ) -> io::Result<()>
     where
         T: AsyncWrite + Unpin + Send,
     {
         write_framed(io, data).await
     }
 
-    async fn write_response<T>(&mut self, _: &RelayAuthProtocol, io: &mut T, RelayAuthResponse(accept): RelayAuthResponse) -> io::Result<()>
+    async fn write_response<T>(
+        &mut self,
+        _: &RelayAuthProtocol,
+        io: &mut T,
+        RelayAuthResponse(accept): RelayAuthResponse,
+    ) -> io::Result<()>
     where
         T: AsyncWrite + Unpin + Send,
     {
@@ -112,7 +128,10 @@ mod tests {
     fn test_protocol_name() {
         let protocol = RelayAuthProtocol();
         assert_eq!(protocol.as_ref(), "/chiral/relay-auth/1.0.0");
-        assert_eq!(RelayAuthProtocol::protocol_name(), "/chiral/relay-auth/1.0.0");
+        assert_eq!(
+            RelayAuthProtocol::protocol_name(),
+            "/chiral/relay-auth/1.0.0"
+        );
     }
 
     #[test]
@@ -138,19 +157,22 @@ mod tests {
     async fn test_read_write_request() {
         let mut codec = RelayAuthCodec();
         let protocol = RelayAuthProtocol();
-        
+
         // Test writing and reading a request
         let original_request = RelayAuthRequest(b"test_token_123".to_vec());
         let mut buffer = Vec::new();
         let mut cursor = Cursor::new(&mut buffer);
-        
+
         // Write request
-        codec.write_request(&protocol, &mut cursor, original_request.clone()).await.unwrap();
-        
+        codec
+            .write_request(&protocol, &mut cursor, original_request.clone())
+            .await
+            .unwrap();
+
         // Read it back
         cursor.set_position(0);
         let read_request = codec.read_request(&protocol, &mut cursor).await.unwrap();
-        
+
         assert_eq!(original_request, read_request);
     }
 
@@ -158,21 +180,27 @@ mod tests {
     async fn test_read_write_response() {
         let mut codec = RelayAuthCodec();
         let protocol = RelayAuthProtocol();
-        
+
         // Test writing and reading accept response
         let mut buffer = Vec::new();
         let mut cursor = Cursor::new(&mut buffer);
-        
-        codec.write_response(&protocol, &mut cursor, RelayAuthResponse(true)).await.unwrap();
+
+        codec
+            .write_response(&protocol, &mut cursor, RelayAuthResponse(true))
+            .await
+            .unwrap();
         cursor.set_position(0);
         let read_response = codec.read_response(&protocol, &mut cursor).await.unwrap();
         assert!(read_response.0);
-        
+
         // Test writing and reading reject response
         drop(cursor);
         buffer.clear();
         let mut cursor = Cursor::new(&mut buffer);
-        codec.write_response(&protocol, &mut cursor, RelayAuthResponse(false)).await.unwrap();
+        codec
+            .write_response(&protocol, &mut cursor, RelayAuthResponse(false))
+            .await
+            .unwrap();
         cursor.set_position(0);
         let read_response = codec.read_response(&protocol, &mut cursor).await.unwrap();
         assert!(!read_response.0);
@@ -182,13 +210,15 @@ mod tests {
     async fn test_token_length_limit() {
         let mut codec = RelayAuthCodec();
         let protocol = RelayAuthProtocol();
-        
+
         // Test that tokens over 1024 bytes are rejected
         let large_token = vec![0u8; 1025];
         let mut buffer = Vec::new();
         let mut cursor = Cursor::new(&mut buffer);
-        
-        let result = codec.write_request(&protocol, &mut cursor, RelayAuthRequest(large_token)).await;
+
+        let result = codec
+            .write_request(&protocol, &mut cursor, RelayAuthRequest(large_token))
+            .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("exceeds maximum"));
     }

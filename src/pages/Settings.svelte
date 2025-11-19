@@ -35,6 +35,8 @@
   import { invoke } from "@tauri-apps/api/core";
   import Expandable from "$lib/components/ui/Expandable.svelte";
   import { settings, activeBandwidthLimits, type AppSettings } from "$lib/stores";
+  import { DEFAULT_RELAY_LIST } from "$lib/constants/network";
+  import { ensureRelayDefaults } from "$lib/utils/relayDefaults";
   import { bandwidthScheduler } from "$lib/services/bandwidthScheduler";
   import { settingsBackupService } from "$lib/services/settingsBackupService";
 
@@ -96,11 +98,11 @@
     autonatProbeInterval: 30,
     autonatServers: [],
     enableAutorelay: true,
-    preferredRelays: [],
+    preferredRelays: [...DEFAULT_RELAY_LIST],
     enableRelayServer: false,
     anonymousMode: false,
     shareAnalytics: true,
-    customBootstrapNodes: [],
+    customBootstrapNodes: [...DEFAULT_RELAY_LIST],
     autoStartDHT: false,
 
     // Notifications
@@ -892,7 +894,7 @@
     const stored = localStorage.getItem("chiralSettings");
     if (stored) {
   try {
-    const loadedSettings: AppSettings = JSON.parse(stored);
+    const loadedSettings: AppSettings = ensureRelayDefaults(JSON.parse(stored)) as AppSettings;
     // Set the store, which ensures it is available globally
     settings.set({ ...defaultSettings, ...loadedSettings });
     // Update local state from the store after loading
@@ -2406,6 +2408,3 @@ function sectionMatches(section: string, query: string) {
     </div>
   </div>
 {/if}
-
-
-

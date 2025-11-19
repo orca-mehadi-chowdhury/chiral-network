@@ -4,6 +4,8 @@
   import { settings } from '$lib/stores';
   import { dhtService } from '$lib/dht';
   import { relayErrorService } from '$lib/services/relayErrorService';
+  import { DEFAULT_RELAY_LIST } from '$lib/constants/network';
+  import { ensureRelayDefaults } from '$lib/utils/relayDefaults';
   import Card from '$lib/components/ui/card.svelte';
   import Button from '$lib/components/ui/button.svelte';
   import Label from '$lib/components/ui/label.svelte';
@@ -26,11 +28,12 @@
     const stored = localStorage.getItem('chiralSettings');
     if (stored) {
       try {
-        const loadedSettings = JSON.parse(stored);
+        const loadedSettings = ensureRelayDefaults(JSON.parse(stored));
         relayServerEnabled = loadedSettings.enableRelayServer ?? false;
         autoRelayEnabled = loadedSettings.enableAutorelay ?? true;
         preferredRelaysText = (loadedSettings.preferredRelays || []).join('\n');
         relayServerAlias = loadedSettings.relayServerAlias ?? '';
+        localStorage.setItem('chiralSettings', JSON.stringify(loadedSettings));
       } catch (e) {
         console.error('Failed to load settings:', e);
       }
@@ -70,16 +73,19 @@
       }
     }
 
+    const normalizedRelays = preferredRelaysText
+      .split('\n')
+      .map((r) => r.trim())
+      .filter((r) => r.length > 0);
+
     currentSettings = {
       ...currentSettings,
       enableRelayServer: relayServerEnabled,
-      enableAutorelay: autoRelayEnabled,
-      preferredRelays: preferredRelaysText
-        .split('\n')
-        .map((r) => r.trim())
-        .filter((r) => r.length > 0),
+      enableAutorelay: autoRelayEnabled ?? true,
+      preferredRelays: normalizedRelays.length > 0 ? normalizedRelays : [...DEFAULT_RELAY_LIST],
       relayServerAlias: relayServerAlias.trim(),
     };
+    currentSettings = ensureRelayDefaults(currentSettings);
 
     localStorage.setItem('chiralSettings', JSON.stringify(currentSettings));
     settings.set(currentSettings as any);

@@ -30,7 +30,8 @@ import type { AppSettings, ActiveBandwidthLimits } from './lib/stores'
     import { fileService } from '$lib/services/fileService';
     import { bandwidthScheduler } from '$lib/services/bandwidthScheduler';
     import { detectUserRegion } from '$lib/services/geolocation';
-    import { paymentService } from '$lib/services/paymentService';
+import { paymentService } from '$lib/services/paymentService';
+import { ensureRelayDefaults } from '$lib/utils/relayDefaults';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { exit } from '@tauri-apps/plugin-process';
@@ -267,7 +268,8 @@ function handleFirstRunComplete() {
       try {
         const storedSettings = localStorage.getItem("chiralSettings");
         if (storedSettings) {
-          const parsed = JSON.parse(storedSettings);
+          const parsed = ensureRelayDefaults(JSON.parse(storedSettings));
+          localStorage.setItem("chiralSettings", JSON.stringify(parsed));
           if (typeof parsed?.userLocation === "string" && parsed.userLocation) {
             storedLocation = parsed.userLocation;
             userLocation.set(parsed.userLocation);
@@ -291,14 +293,15 @@ function handleFirstRunComplete() {
               try {
                 const storedSettings = localStorage.getItem("chiralSettings");
                 if (storedSettings) {
-                  const parsed = JSON.parse(storedSettings) ?? {};
+                  const parsed = ensureRelayDefaults(JSON.parse(storedSettings) ?? {});
                   parsed.userLocation = detectedLocation;
                   localStorage.setItem(
                     "chiralSettings",
                     JSON.stringify(parsed),
                   );
                 } else {
-                  localStorage.setItem("chiralSettings", JSON.stringify(next));
+                  const normalized = ensureRelayDefaults({ ...next });
+                  localStorage.setItem("chiralSettings", JSON.stringify(normalized));
                 }
               } catch (storageError) {
                 console.warn(
